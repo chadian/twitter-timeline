@@ -1,0 +1,8 @@
+<?
+	$oath['oauth_consumer_key'] = 'LSTQj9uVUkA6uVgaWWxZ0w';
+	$oath['oauth_signature_method'] = 'HMAC-SHA1';
+	$oath['oauth_token'] = '15097969-9Y0Awq1KU9t6OUf9B2XgH8wzyfbPWHZfTDXG6poWq';
+	$oath['oauth_version'] = '1.0';
+	$oath['oauth_consumer_secret'] = 'yf19WbT2hrZwggaswDPCKSWYJjGcoCmcrpM4qOz4E';
+	$oath['oath_token_secret'] = '1Ym9NEGZsXYCUD5O8jFFTK3XBDiTl2VBgV36kajHM7U9o';
+?>
