@@ -55,8 +55,15 @@ class QuickConfiguration {
 
 class TwitterTimeline {
 
-	private $oathValues = array();
-	private $oathSecrets = array();
+	private $requiredOauthValues = array('oauth_consumer_key',
+										 'oauth_signature_method',
+										 'oauth_token',
+										 'oauth_version',
+										 'oauth_consumer_secret',
+										 'oauth_token_secret');
+
+	private $oauthValues = array();
+	private $oauthSecrets = array();
 
 	private static $twitterUrlTimeline = 'https://api.twitter.com/1.1/statuses/user_timeline.json';
 	private $requestMethod = 'GET';
@@ -65,15 +72,33 @@ class TwitterTimeline {
 
 	private $curl;
 
-	public function __construct($oathValues) {
+	public function __construct($oauthValues) {
 
-		// remove oauth_consumer_secret & oath_token_secret and track in separate array
-		$this->oathSecrets['oath_token_secret'] = $oathValues['oath_token_secret'];
-		$this->oathSecrets['oauth_consumer_secret'] = $oathValues['oauth_consumer_secret'];
+		if (is_array($oauthValues)) {
+
+			foreach ($this->requiredOauthValues as $required) {
+
+				if (!isset($oauthValues[$required])) {
+
+					throw new Exception("Required Oauth value '$required' was not found in your oauth settings, please see 'oauth_settings.php.example' for a complete list of required oauth values.");
+
+				} else if (empty($oauthValues[$required])) {
+
+					throw new Exception("Required Oauth value '$required' was not set, check your oauth settings.");
+				}
+			}
+		} else {
+
+			throw new Exception('Oauth values passed must be an array');
+		}
+
+		// remove oauth_consumer_secret & oauth_token_secret and track in separate array
+		$this->oauthSecrets['oauth_token_secret'] = $oauthValues['oauth_token_secret'];
+		$this->oauthSecrets['oauth_consumer_secret'] = $oauthValues['oauth_consumer_secret'];
 
 		// remainder of values are used for headers and creating the signature
-		unset($oathValues['oath_token_secret'], $oathValues['oauth_consumer_secret']);
-		$this->oathValues = $oathValues;
+		unset($oauthValues['oauth_token_secret'], $oauthValues['oauth_consumer_secret']);
+		$this->oauthValues = $oauthValues;
 	}
 
 	/**
@@ -104,16 +129,16 @@ class TwitterTimeline {
 		$this->addUrlParam('screen_name', $user);
 		$this->addUrlParam('include_rts', $includeRetweets);
 
-		$params = array_merge($this->urlParams, $this->oathValues);
-		$curlOathValues = $this->oathSetup(self::$twitterUrlTimeline, $params);
+		$params = array_merge($this->urlParams, $this->oauthValues);
+		$curlOathValues = $this->oauthSetup(self::$twitterUrlTimeline, $params);
 
 		$this->setupCurl($curlOathValues);
 		return $this->execCurl();
 	}
 
-	private function oathSetup($url, $params) {
+	private function oauthSetup($url, $params) {
 
-		// final oath generated params
+		// final oauth generated params
 		$params['oauth_nonce'] = self::getNonce(); // unique string
 		$params['oauth_timestamp'] = time();
 		$params['oauth_signature'] = $this->getOathSignature($url, $params);
@@ -157,18 +182,18 @@ class TwitterTimeline {
 
 		$signatureBaseString = $method. '&' .$encodedUrl. '&' .$encodedParamString;
 
-		$signingKey =	rawurlencode($this->oathSecrets['oauth_consumer_secret']).
+		$signingKey =	rawurlencode($this->oauthSecrets['oauth_consumer_secret']).
 						'&'.
-						rawurlencode($this->oathSecrets['oath_token_secret']);
+						rawurlencode($this->oauthSecrets['oauth_token_secret']);
 
 		return $oauth_signature = base64_encode(hash_hmac('sha1', $signatureBaseString, $signingKey, true));
 	}
 
-	private function setupCurl($oath) {
+	private function setupCurl($oauth) {
 
 		$this->curl = curl_init($this->getUrlWithParams());
 		$header[] = 'Content-Type: application/x-www-form-rawurlencoded';
-		$header[] = 'Authorization: OAuth oauth_consumer_key="'. $oath['oauth_consumer_key'] .'", oauth_nonce="'. rawurlencode($oath['oauth_nonce']) .'", oauth_signature="'. rawurlencode($oath['oauth_signature']) .'", oauth_signature_method="'. rawurlencode($oath['oauth_signature_method']) .'", oauth_timestamp="'. $oath['oauth_timestamp'] .'", oauth_token="'. rawurlencode($oath['oauth_token']) .'", oauth_version="'. rawurlencode($oath['oauth_version']) .'"';
+		$header[] = 'Authorization: OAuth oauth_consumer_key="'. $oauth['oauth_consumer_key'] .'", oauth_nonce="'. rawurlencode($oauth['oauth_nonce']) .'", oauth_signature="'. rawurlencode($oauth['oauth_signature']) .'", oauth_signature_method="'. rawurlencode($oauth['oauth_signature_method']) .'", oauth_timestamp="'. $oauth['oauth_timestamp'] .'", oauth_token="'. rawurlencode($oauth['oauth_token']) .'", oauth_version="'. rawurlencode($oauth['oauth_version']) .'"';
 
 		curl_setopt($this->curl, CURLOPT_HTTPHEADER, $header);
 	}
@@ -226,6 +251,7 @@ class TwitterTimelineHandler{
 		return $this->getCachedTweets($user, $qty);
 	}
 
+
 	public function updateTweetCache($user){
 
 		error_log('Updating tweet cache');
@@ -244,24 +270,33 @@ class TwitterTimelineHandler{
 		$timelineJson = $this->tt->getTimelineJson($user);
 		$tweets = json_decode($timelineJson, true);
 
-		foreach ($tweets as $tweet) {
+		if (!isset($tweets['errors'])) {
 
-			/*
-				What we need from each tweet
-					- tweet_id		=> ['id']
-					- user			=> (method param)
-					- date			=> ['created_at']
-					- tweet			=> json_encode($tweet)
-			 */
+			foreach ($tweets as $tweet) {
 
-			$tweetId = $tweet['id'];
-			$date = $tweet['created_at'];
-			$tweetJson = json_encode($tweet);
+				/*
+					What we need from each tweet
+						- tweet_id		=> ['id']
+						- user			=> (method param)
+						- date			=> ['created_at']
+						- tweet			=> json_encode($tweet)
+				 */
 
-			$this->saveTweetToCache($tweetId, $user, $date, $tweetJson);
+				$tweetId = $tweet['id'];
+				$date = $tweet['created_at'];
+				$tweetJson = json_encode($tweet);
+
+				$this->saveTweetToCache($tweetId, $user, $date, $tweetJson);
+			}
+
+			$this->updateTweetCacheMap($user);
+
+		} else {
+
+			// $tweets contains the json decoded response from twitter, on success it is an array of tweets
+			// On failure it is an array with the errors key set to an array of error data.
+			error_log("We had an issue getting tweets from the twitter API: ". print_r($tweets, true));
 		}
-
-		$this->updateTweetCacheMap($user);
 	}
 
 	private function updateTweetCacheMap($user){
@@ -413,6 +448,8 @@ class TwitterTimelineHandler{
 
 ***********************************************/
 
+	$message = '';
+
 	// Set default user if one has not been set from form
 	if (!isset($_REQUEST['user'])) {
 		$user = 'snapshot_is';
@@ -422,46 +459,58 @@ class TwitterTimelineHandler{
 
 	QuickConfiguration::connectDatabase();
 
-	// bring in $oath - array of necessary values
-	include('oath_settings.php');
+	// bring in $oauth - array of necessary values
+	include('oauth_settings.php');
 
-	// $oath array is set within oath_settings.php
-	$tt = new TwitterTimeline($oath);
-	$tth = new TwitterTimelineHandler($tt);
+	// $oauth array is set within oauth_settings.php
+	try {
+		$tt = new TwitterTimeline($oauth);
+	} catch (Exception $e) {
 
-	$message = "";
-	if (empty($user)) {
-		$user = 'snapshot_is';
-		$message .= "<span class=\"notice\">The field was empty so we went ahead and found you some tweets from my friends at <a href=\"http://snapshot.is\">@snapshot_is</a></span>";
+		$message .= 'We tried and got so far but in the end it doesn\'t matter.<br/>';
+		$message .= $e->getMessage();
 	}
 
-	$jsonEncodedTweets = $tth->getRecentTweets($user);
+	if (isset($tt)) {
 
-	if (count($jsonEncodedTweets)) {
+		$tth = new TwitterTimelineHandler($tt);
 
-		/*
-			Store an associative array of each tweet, cleaned from json.
-			Results in a cleaner implementation for template, although theoretically
-			 more computationally intensive to loop through twice instead of once.
-		 */
-
-		$tweets = array();
-		foreach ($jsonEncodedTweets as $tweet) {
-
-			$decodedTweet = json_decode($tweet, true);
-
-			// Pulled from http://stackoverflow.com/questions/1798912/replace-any-urls-within-a-string-of-text-to-clickable-links-with-php
-			$decodedTweet['text'] = preg_replace('"\b(http://\S+)"', '<a href="$1">$1</a>', $decodedTweet['text']);
-			$tweets[] = $decodedTweet;
+		if (empty($user)) {
+			$user = 'snapshot_is';
+			$message .= "<span class=\"notice\">The field was empty so we went ahead and found you some tweets from my friends at <a href=\"http://snapshot.is\">@snapshot_is</a></span>";
 		}
 
-		$message .= "<span class=\"timeline_intro\">Recent tweets from @$user:</span>";
+		$jsonEncodedTweets = $tth->getRecentTweets($user);
 
-	} else {
+		if (count($jsonEncodedTweets)) {
 
-		$message .= "<span class=\"timeline_intro\">We're sorry, we we're unable to find any tweets for $user</span>";
+			/*
+				Store an associative array of each tweet, cleaned from json.
+				Results in a cleaner implementation for template, although theoretically
+				 more computationally intensive to loop through twice instead of once.
+			 */
+
+			$tweets = array();
+			foreach ($jsonEncodedTweets as $tweet) {
+
+				$decodedTweet = json_decode($tweet, true);
+
+				// Pulled from http://stackoverflow.com/questions/1798912/replace-any-urls-within-a-string-of-text-to-clickable-links-with-php
+				$decodedTweet['text'] = preg_replace('"\b(http://\S+)"', '<a href="$1">$1</a>', $decodedTweet['text']);
+				$tweets[] = $decodedTweet;
+			}
+
+			$message .= "<span class=\"timeline_intro\">Recent tweets from @$user:</span>";
+
+		} else {
+
+			$message .= "<span class=\"timeline_intro\">We're sorry, we we're unable to find any tweets for $user</span>";
+		}
+
+	} else { // $tt is not set
+
+		$message .= '<br/>We had Problems with creating the Twitter Timeline Handler';
 	}
-
 
 /***********************************************
 
