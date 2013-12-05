@@ -459,7 +459,7 @@ class TwitterTimelineHandler{
 
 	} else {
 
-		$message .= "<span class=\"timeline_intro\">We're sorry, we we're able to find any tweets for $user</span>";
+		$message .= "<span class=\"timeline_intro\">We're sorry, we we're unable to find any tweets for $user</span>";
 	}
 
 
